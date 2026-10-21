@@ -4,6 +4,7 @@ import remarkGfm from 'remark-gfm'
 import { agentSocket, type AgentSocket } from '../api/ws'
 import { writeClipboardText } from '../api/clipboard'
 import type { AiAskPayload } from '../api/aiBridge'
+import { useFloatDrag } from '../utils/floatDrag'
 import type { AiChatSummary, AiHistoryMessage } from '@bgshell/protocol'
 
 interface ChatMsg {
@@ -197,6 +198,8 @@ export function ChatPanel({
   // 拖拽中直接改面板 DOM 样式（不走 state，避免整面板每帧重渲染）；宿主联动窗口尺寸需节流上报
   const [size, setSize] = useState<ChatPanelSize | undefined>(() => loadChatSize(sizeMax))
   const panelRef = useRef<HTMLDivElement>(null)
+  // ── 拖动移动位置：按住标题栏拖动；未拖动过保持右下角默认定位（utils/floatDrag）──
+  const { posStyle: panelPosStyle, headBind: dragHeadBind } = useFloatDrag('chat-panel', panelRef)
   const resizeRef = useRef<{ axis: ResizeAxis; x: number; y: number; w: number; h: number } | null>(null)
   const pendingSizeRef = useRef<ChatPanelSize | null>(null)
   const lastNotifyRef = useRef(0)
@@ -618,7 +621,11 @@ export function ChatPanel({
   }
 
   return (
-    <div ref={panelRef} className="chat-panel" style={size ? { width: size.w, height: size.h } : undefined}>
+    <div
+      ref={panelRef}
+      className="chat-panel"
+      style={{ ...(size ? { width: size.w, height: size.h } : undefined), ...panelPosStyle }}
+    >
       {/* 拖拽调整尺寸把手：面板锚右下角，拖左边/上边/左上角调整大小（最小 300×340） */}
       <div
         className="chat-rz chat-rz-w"
@@ -644,7 +651,7 @@ export function ChatPanel({
         onPointerUp={endResize}
         onPointerCancel={endResize}
       />
-      <div className="chat-head">
+      <div className="chat-head" title="按住标题栏可拖动位置" {...dragHeadBind}>
         <span>AI 助手</span>
         <button type="button" className="chat-close" title="开启新对话（历史记录保留在数据库中）" onClick={() => {
           const old = chatIdRef.current

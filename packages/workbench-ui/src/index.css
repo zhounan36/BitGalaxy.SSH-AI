@@ -494,6 +494,14 @@ body {
   border-bottom: 1px solid var(--border);
 }
 
+/* 浮层标题栏拖动移动位置（utils/floatDrag）：手型光标 + 禁止选中/触摸滚动 */
+.wb-chat-wrap .chat-panel .chat-head,
+.ai-cmd-head {
+  cursor: grab;
+  user-select: none;
+  touch-action: none;
+}
+
 .ai-cmd-title {
   color: var(--text-primary);
   font: 600 13px/1.3 var(--font-ui);

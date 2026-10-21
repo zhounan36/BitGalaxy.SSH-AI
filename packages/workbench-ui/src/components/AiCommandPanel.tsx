@@ -1,8 +1,10 @@
+import { useRef } from 'react'
 import { Tag, message } from 'antd'
 import { ClearOutlined, CloseOutlined, ThunderboltOutlined } from '@ant-design/icons'
 import type { AiCommand } from '@bgshell/protocol'
 import { writeClipboardText } from '../api/clipboard'
 import { pasteIntoTerminal } from './TerminalPane'
+import { useFloatDrag } from '../utils/floatDrag'
 
 interface AiCommandPanelProps {
   commands: AiCommand[]
@@ -17,6 +19,10 @@ interface AiCommandPanelProps {
  *  AI 没有执行权限，命令由用户自己执行——点击列表项粘贴到对应 SSH 终端
  *  （尊重括号粘贴模式，不自动执行），target=local 的复制到剪贴板。 */
 export function AiCommandPanel({ commands, terminals, activeKey, onClose, onClear }: AiCommandPanelProps) {
+  // 拖动移动位置（须在提前 return 之前调用 hook）
+  const panelRef = useRef<HTMLDivElement>(null)
+  const { posStyle, headBind } = useFloatDrag('ai-cmd-panel', panelRef)
+
   if (commands.length === 0) return null
 
   const applyCommand = (cmd: AiCommand) => {
@@ -48,8 +54,8 @@ export function AiCommandPanel({ commands, terminals, activeKey, onClose, onClea
   }
 
   return (
-    <div className="ai-cmd-panel">
-      <div className="ai-cmd-head">
+    <div ref={panelRef} className="ai-cmd-panel" style={posStyle}>
+      <div className="ai-cmd-head" title="按住标题栏可拖动位置" {...headBind}>
         <ThunderboltOutlined style={{ color: 'var(--accent)' }} />
         <span className="ai-cmd-title">AI 候选命令</span>
         <span className="ai-cmd-hint">点击粘贴 · 回车执行</span>
