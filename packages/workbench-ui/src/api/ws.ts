@@ -1,0 +1,152 @@
+import {
+  DataFrameType,
+  decodeDataFrame,
+  decodeOpPayload,
+  encodeDataFrame,
+  encodeOpPayload,
+  type ClientFrame,
+  type ServerFrame,
+} from '@bgshell/protocol'
+
+type ControlHandler = (frame: ServerFrame) => void
+type DataHandler = (sid: string, type: number, payload: Uint8Array) => void
+type ChunkHandler = (chunk: Uint8Array) => void
+
+/** 与本机 Agent 的 WebSocket 通道（生产：Agent 同源 /ws；开发：经 vite 代理）。
+ * 断线自动重连（5s 退避）：主窗隐藏到托盘被 WebView2 节流/挂起等场景会掐断 WS，
+ * 不重连会让工作台永久假死（终端冻结、打开会话静默失败） */
+export class AgentSocket {
+  private ws: WebSocket | null = null
+  private readonly controlHandlers = new Set<ControlHandler>()
+  private readonly dataHandlers = new Set<DataHandler>()
+  private readonly downloadHandlers = new Map<string, ChunkHandler>()
+  private everConnected = false
+  private reconnectTimer: number | undefined
+  private pending: Promise<void> | null = null
+
+  constructor(private readonly portOverride?: string) {}
+
+  get ready(): boolean {
+    return this.ws?.readyState === WebSocket.OPEN
+  }
+
+  connect(maxRetries = 10): Promise<void> {
+    if (this.ready) return Promise.resolve()
+    if (this.pending) return this.pending
+    // 启动竞态兜底：服务端绑定可能略晚于窗口加载，最多重试（每次 500ms）
+    const attempt = (remaining: number): Promise<void> =>
+      this.connectOnce().catch((err: Error) => {
+        if (remaining <= 0) throw err
+        return new Promise((resolve, reject) => {
+          setTimeout(() => attempt(remaining - 1).then(resolve, reject), 500)
+        })
+      })
+    this.pending = attempt(maxRetries).finally(() => {
+      this.pending = null
+    })
+    return this.pending
+  }
+
+  /** 断线后自动重连；成功后广播 reconnected（App 据此刷新主机列表） */
+  private scheduleReconnect(): void {
+    if (this.reconnectTimer !== undefined) return
+    this.reconnectTimer = window.setTimeout(() => {
+      this.reconnectTimer = undefined
+      this.connect()
+        .then(() => {
+          this.controlHandlers.forEach((h) =>
+            h({ t: 'error', m: { code: 'reconnected', message: '已重新连接到 Agent' } }),
+          )
+        })
+        .catch(() => this.scheduleReconnect())
+    }, 5000)
+  }
+
+  private connectOnce(): Promise<void> {
+    if (this.ready) return Promise.resolve()
+    return new Promise((resolve, reject) => {
+      // 每入口注入的后端端口（入口 HTML 内嵌 window.__BGSH_WS__="7780"）：
+      // 单体应用，SSH 数据面与 AI 同进程同端口，dev 与 prod 统一直连。
+      // portOverride 显式指定时优先生效（aiSocket 与 agentSocket 同端口）。
+      const injectedPort = this.portOverride ?? (window as { __BGSH_WS__?: string }).__BGSH_WS__
+      const wsUrl = injectedPort
+        ? `ws://127.0.0.1:${injectedPort}/ws`
+        : location.hostname === 'tauri.localhost' || location.protocol === 'tauri:'
+          ? 'ws://127.0.0.1:7777/ws'
+          : `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/ws`
+      const ws = new WebSocket(wsUrl)
+      ws.binaryType = 'arraybuffer'
+      ws.onopen = () => {
+        this.ws = ws
+        this.everConnected = true
+        resolve()
+      }
+      ws.onerror = () => reject(new Error('无法连接本机 Agent（请确认 agent 已启动）'))
+      ws.onclose = () => {
+        this.ws = null
+        // 首连重试由 connect() 兜底，不广播、不触发重连定时器（避免启动期噪音）
+        if (!this.everConnected) return
+        this.everConnected = false
+        this.controlHandlers.forEach((h) =>
+          h({ t: 'error', m: { code: 'disconnected', message: '与 Agent 的连接已断开' } }),
+        )
+        this.scheduleReconnect()
+      }
+      ws.onmessage = (ev) => {
+        if (typeof ev.data === 'string') {
+          const frame = JSON.parse(ev.data) as ServerFrame
+          this.controlHandlers.forEach((h) => h(frame))
+        } else {
+          const { type, sid, payload } = decodeDataFrame(new Uint8Array(ev.data))
+          if (type === DataFrameType.SftpDownload) {
+            const { opId, chunk } = decodeOpPayload(payload)
+            this.downloadHandlers.get(opId)?.(chunk)
+          } else {
+            this.dataHandlers.forEach((h) => h(sid, type, payload))
+          }
+        }
+      }
+    })
+  }
+
+  onControl(h: ControlHandler): () => void {
+    this.controlHandlers.add(h)
+    return () => this.controlHandlers.delete(h)
+  }
+
+  onData(h: DataHandler): () => void {
+    this.dataHandlers.add(h)
+    return () => this.dataHandlers.delete(h)
+  }
+
+  /** 注册下载块回调（按 opId），返回注销函数 */
+  registerDownloadChunk(opId: string, cb: ChunkHandler): () => void {
+    this.downloadHandlers.set(opId, cb)
+    return () => this.downloadHandlers.delete(opId)
+  }
+
+  sendControl(frame: ClientFrame): void {
+    this.ws?.send(JSON.stringify(frame))
+  }
+
+  sendInput(sid: string, data: Uint8Array): void {
+    // encodeDataFrame/TextEncoder 产物独占整段 buffer，可直接发 buffer（DOM send 需要 ArrayBuffer）
+    this.ws?.send(encodeDataFrame(DataFrameType.Stdin, sid, data).buffer as ArrayBuffer)
+  }
+
+  /** SFTP 上传块（含发送缓冲背压：超过 8MB 暂停再发，避免大文件占爆内存） */
+  async sendSftpChunk(sid: string, opId: string, chunk: Uint8Array): Promise<void> {
+    while (this.ws && this.ws.bufferedAmount > 8 * 1024 * 1024) {
+      await new Promise((r) => setTimeout(r, 25))
+    }
+    const frame = encodeDataFrame(DataFrameType.SftpUpload, sid, encodeOpPayload(opId, chunk))
+    this.ws?.send(frame.buffer as ArrayBuffer)
+  }
+}
+
+export const agentSocket = new AgentSocket()
+
+/** AI 通道：连本进程后端（与 SSH 数据面同端口，入口 HTML 注入 __BGSH_WS__=7780）
+ *  的第二连接。AiHandler（LLM 配置/审批/历史）与 SSH 引擎同进程；
+ *  AI 对话经此通道发送 ai op 帧并接收广播回包。懒连接：首次使用时才建立。 */
+export const aiSocket = new AgentSocket('7780')

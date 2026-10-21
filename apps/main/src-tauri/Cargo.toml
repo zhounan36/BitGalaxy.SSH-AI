@@ -1,0 +1,29 @@
+[package]
+name = "bgshell-ssh-ai"
+version = "0.1.0"
+description = "BitGalaxy SSH AI：SSH 终端 / SFTP 文件管理 / 运行状态 + AI 助手（单体应用）"
+edition = "2021"
+
+[lib]
+name = "bgshell_ssh_ai_lib"
+crate-type = ["rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+bg-core = { path = "../../../crates/bg-core" }
+bg-ssh = { path = "../../../crates/bg-ssh" }
+bg-ai = { path = "../../../crates/bg-ai" }
+bg-server = { path = "../../../crates/bg-server" }
+tauri = { version = "2", features = [] }
+tauri-plugin-single-instance = "2"
+# 终端复制/粘贴：WebView2 下 navigator.clipboard.readText 不可靠，走原生剪贴板
+tauri-plugin-clipboard-manager = "2"
+# 主机编辑私钥文件路径浏览 / 下载另存为
+tauri-plugin-dialog = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+chrono = { version = "0.4", features = ["serde"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "time", "net", "sync"] }
+futures-util = "0.3"

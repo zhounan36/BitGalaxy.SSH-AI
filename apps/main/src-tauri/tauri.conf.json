@@ -1,0 +1,39 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "BitGalaxy SSH AI",
+  "version": "0.1.0",
+  "identifier": "com.bitgalaxy.sshai",
+  "build": {
+    "devUrl": "http://localhost:17177/",
+    "frontendDist": "../../../packages/workbench-ui/dist"
+  },
+  "app": {
+    "windows": [
+      {
+        "label": "main",
+        "title": "BitGalaxy SSH AI",
+        "width": 1360,
+        "height": 860,
+        "minWidth": 1024,
+        "minHeight": 680,
+        "decorations": false,
+        "visible": false,
+        "additionalBrowserArgs": "--remote-debugging-port=9222"
+      }
+    ],
+    "security": {
+      "csp": null
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": ["nsis"],
+    "icon": ["icons/icon.ico", "icons/icon.png"],
+    "windows": {
+      "nsis": {
+        "languages": ["SimpChinese"],
+        "displayLanguageSelector": false
+      }
+    }
+  }
+}

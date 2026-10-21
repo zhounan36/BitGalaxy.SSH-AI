@@ -1,0 +1,20 @@
+# 根 Cargo workspace：BitGalaxy SSH AI（单体应用）
+# - apps/main/src-tauri：唯一应用壳——SSH 数据面 + AI 引擎同进程同端口（7780）
+# - crates/bg-*：共享 crate（自 BitGalaxy.Shell 四 EXE 工程移植：core/ssh/ai/server）
+[workspace]
+resolver = "2"
+members = [
+    "apps/main/src-tauri",
+    "crates/*",
+]
+
+# profile 集中在 workspace 根定义（非根成员内的 profile 会被 cargo 忽略并告警）
+[profile.dev]
+# 编译提速：只保留行号表（跳过变量/完整类型调试信息），MSVC 下 PDB 体积大幅缩小，
+# 依赖树首次编译与 rust-lld 链接都明显加快；panic 回溯仍带行号
+debug = "line-tables-only"
+
+[profile.release]
+# 编译提速；SSH/IO 型应用无跨 crate 内联需求（体积主要靠 strip）
+lto = false
+strip = true

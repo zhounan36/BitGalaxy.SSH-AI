@@ -1,0 +1,17 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>BitGalaxy SSH AI</title>
+    <script>
+      // 本应用后端端口（单体应用：SSH 数据面与 AI 同进程同端口 7780）；
+      // ws.ts 据此直连，dev 与 prod 一致
+      window.__BGSH_WS__ = '7780'
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

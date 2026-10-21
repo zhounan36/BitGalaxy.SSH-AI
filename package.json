@@ -1,0 +1,23 @@
+{
+  "name": "bitgalaxy-ssh-ai",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "BitGalaxy SSH AI：SSH 终端 / SFTP / 运行状态 + AI 助手单体桌面应用（Tauri 2，单进程单 EXE）",
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "scripts": {
+    "build:protocol": "npm run build -w @bgshell/protocol",
+    "build:ui": "npm run build -w @bgshell/workbench-ui",
+    "dev:ui": "npm run dev -w @bgshell/workbench-ui",
+    "dev": "npm run build:protocol && start \"bgssai-dev-ui\" /min npm run dev:ui && npm run dev -w @bgshell/main",
+    "build": "npm run build:protocol && npm run build:ui && npm run build -w @bgshell/main"
+  },
+  "devDependencies": {
+    "@types/node": "^24.13.2",
+    "esbuild": "^0.28.2",
+    "typescript": "~6.0.2"
+  }
+}

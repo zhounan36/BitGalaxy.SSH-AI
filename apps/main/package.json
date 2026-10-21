@@ -1,0 +1,14 @@
+{
+  "name": "@bgshell/main",
+  "version": "0.1.0",
+  "private": true,
+  "description": "BitGalaxy SSH AI 桌面应用（Tauri 2 单进程）：SSH 终端 / SFTP / 运行状态 + AI 助手（propose_command 模式）",
+  "scripts": {
+    "tauri": "tauri",
+    "dev": "set \"PATH=%USERPROFILE%\\.cargo\\bin;%PATH%\" && tauri dev",
+    "build": "set \"PATH=%USERPROFILE%\\.cargo\\bin;%PATH%\" && tauri build"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2"
+  }
+}
