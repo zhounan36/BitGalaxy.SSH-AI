@@ -194,6 +194,65 @@ pub async fn connect(
     // 密码重试等待 UI 输入不受此限制）
     let user = host.input.username.clone();
     let auth_ok = match host.input.auth.kind.as_str() {
+        "agent" => {
+            // SSH 代理认证：连本机 openssh-ssh-agent（Windows 命名管道，OnePass 解锁后占用）。
+            // 私钥不出代理进程，认证签名由代理端完成（OnePass 会弹窗确认）。
+            #[cfg(windows)]
+            let mut agent = {
+                let pipe = tokio::net::windows::named_pipe::ClientOptions::new()
+                    .open(r"\\.\pipe\openssh-ssh-agent")
+                    .map_err(|e| {
+                        SshError::Other(format!("SSH 代理不可用（OnePass 未解锁或代理未启用，或被系统 ssh-agent 服务占用）：{e}"))
+                    })?;
+                russh::keys::agent::client::AgentClient::connect(pipe)
+            };
+            #[cfg(unix)]
+            let mut agent = russh::keys::agent::client::AgentClient::connect_env()
+                .await
+                .map_err(|e| SshError::Other(format!("SSH 代理不可用（SSH_AUTH_SOCK）：{e}")))?;
+
+            let identities = tokio::time::timeout(Duration::from_secs(5), agent.request_identities())
+                .await
+                .map_err(|_| SshError::Timeout)?
+                .map_err(|e| SshError::Auth(format!("SSH 代理通信失败: {e}")))?;
+            if identities.is_empty() {
+                return Err(SshError::Auth(
+                    "SSH 代理中没有可用密钥（先在 OnePass 导入 PEM 私钥条目）".into(),
+                ));
+            }
+
+            // 逐个身份尝试；签名在代理端（OnePass 弹确认窗等用户操作），给 120s 而非 15s
+            let mut result = Err(SshError::Auth(format!(
+                "{}@{}（代理密钥均被拒绝）",
+                host.input.username, host.input.host
+            )));
+            for identity in &identities {
+                let public_key = identity.public_key().into_owned();
+                // RSA 按 rsa-sha2-512 签名，与 privateKey 分支策略一致
+                let hash_alg = if matches!(public_key.algorithm(), Algorithm::Rsa { .. }) {
+                    Some(HashAlg::Sha512)
+                } else {
+                    None
+                };
+                let fut = handle.authenticate_publickey_with(user.clone(), public_key, hash_alg, &mut agent);
+                match tokio::time::timeout(Duration::from_secs(120), fut).await {
+                    Ok(Ok(res)) if matches!(res, russh::client::AuthResult::Success) => {
+                        result = Ok(res);
+                        break;
+                    }
+                    Ok(Ok(_)) => continue, // 该身份被服务器拒绝，试下一个
+                    Ok(Err(e)) => {
+                        result = Err(SshError::Auth(format!("SSH 代理签名失败: {e}")));
+                        break;
+                    }
+                    Err(_) => {
+                        result = Err(SshError::Timeout);
+                        break;
+                    }
+                }
+            }
+            result
+        }
         "privateKey" => {
             let path = host
                 .input

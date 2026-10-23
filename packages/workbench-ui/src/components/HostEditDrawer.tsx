@@ -60,7 +60,9 @@ export function HostEditDrawer({ open, host, onClose, onSaved }: HostEditDrawerP
     const auth =
       v.authKind === 'password'
         ? { kind: 'password' as const, password: v.password as string }
-        : { kind: 'privateKey' as const, privateKeyPath: v.privateKeyPath as string, passphrase: v.passphrase as string }
+        : v.authKind === 'agent'
+          ? { kind: 'agent' as const }
+          : { kind: 'privateKey' as const, privateKeyPath: v.privateKeyPath as string, passphrase: v.passphrase as string }
     return {
       name: v.name as string,
       host: v.host as string,
@@ -174,17 +176,32 @@ export function HostEditDrawer({ open, host, onClose, onSaved }: HostEditDrawerP
             options={[
               { value: 'password', label: '密码' },
               { value: 'privateKey', label: '私钥' },
+              { value: 'agent', label: 'SSH 代理' },
             ]}
             optionType="button"
           />
         </Form.Item>
         <Form.Item noStyle shouldUpdate>
-          {({ getFieldValue }) =>
-            getFieldValue('authKind') === 'password' ? (
-              <Form.Item name="password" label="密码" rules={[{ required: true, message: '请输入密码' }]}>
-                <Input.Password />
-              </Form.Item>
-            ) : (
+          {({ getFieldValue }) => {
+            const authKind = getFieldValue('authKind') as string
+            if (authKind === 'password') {
+              return (
+                <Form.Item name="password" label="密码" rules={[{ required: true, message: '请输入密码' }]}>
+                  <Input.Password />
+                </Form.Item>
+              )
+            }
+            if (authKind === 'agent') {
+              return (
+                <Alert
+                  type="info"
+                  showIcon
+                  message="SSH 代理（OnePass）"
+                  description="连接与认证由本机 openssh-ssh-agent 完成（OnePass SSH 代理签名并弹窗确认），私钥不出库。需 OnePass 已解锁且设置中开启「SSH 代理」。"
+                />
+              )
+            }
+            return (
               <>
                 <Form.Item
                   name="privateKeyPath"
@@ -213,7 +230,7 @@ export function HostEditDrawer({ open, host, onClose, onSaved }: HostEditDrawerP
                 </Form.Item>
               </>
             )
-          }
+          }}
         </Form.Item>
       </Form>
       {testResult && (

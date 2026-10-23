@@ -84,7 +84,7 @@ export interface SerialCtlResult {
 
 // ── 主机档案（M1：本地 hosts.json；M2 起与云端档案同步，设计稿 §5.4）──────────
 
-export type HostAuthKind = 'password' | 'privateKey'
+export type HostAuthKind = 'password' | 'privateKey' | 'agent'
 
 export interface HostAuth {
   kind: HostAuthKind
@@ -95,6 +95,7 @@ export interface HostAuth {
   /** 私钥口令（可选） */
   passphrase?: string
 }
+/** kind=agent：走本机 openssh-ssh-agent（OnePass SSH 代理），签名由代理端完成，无需路径 */
 
 export interface HostInput {
   name: string
